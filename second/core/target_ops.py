@@ -1,11 +1,11 @@
-import logging
+
 
 import numba
 import numpy as np
 import numpy.random as npr
 
 import second.core.box_np_ops as box_np_ops
-
+import logging
 logger = logging.getLogger(__name__)
 
 
@@ -102,14 +102,11 @@ def create_target_np(all_anchors,
         # Map from anchor to gt box that has highest overlap
         anchor_to_gt_argmax = anchor_by_gt_overlap.argmax(axis=1)
         # For each anchor, amount of overlap with most overlapping gt box
-        anchor_to_gt_max = anchor_by_gt_overlap[np.arange(num_inside),
-                                                anchor_to_gt_argmax]  #
+        anchor_to_gt_max = anchor_by_gt_overlap[np.arange(num_inside), anchor_to_gt_argmax]
         # Map from gt box to an anchor that has highest overlap
         gt_to_anchor_argmax = anchor_by_gt_overlap.argmax(axis=0)
         # For each gt box, amount of overlap with most overlapping anchor
-        gt_to_anchor_max = anchor_by_gt_overlap[gt_to_anchor_argmax,
-                                                np.arange(anchor_by_gt_overlap.
-                                                          shape[1])]
+        gt_to_anchor_max = anchor_by_gt_overlap[gt_to_anchor_argmax, np.arange(anchor_by_gt_overlap.shape[1])]
         # must remove gt which doesn't match any anchor.
         empty_gt_mask = gt_to_anchor_max == 0
         gt_to_anchor_max[empty_gt_mask] = -1
@@ -122,8 +119,7 @@ def create_target_np(all_anchors,
         """
         # Find all anchors that share the max overlap amount
         # (this includes many ties)
-        anchors_with_max_overlap = np.where(
-            anchor_by_gt_overlap == gt_to_anchor_max)[0]
+        anchors_with_max_overlap = np.where(anchor_by_gt_overlap == gt_to_anchor_max)[0]
         # Fg label: for each gt use anchors with highest overlap
         # (including ties)
         gt_inds_force = anchor_to_gt_argmax[anchors_with_max_overlap]

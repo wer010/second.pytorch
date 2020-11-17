@@ -29,8 +29,9 @@ message LocalizationLoss {
     WeightedL2LocalizationLoss weighted_l2 = 1;
     WeightedSmoothL1LocalizationLoss weighted_smooth_l1 = 2;
     WeightedGHMLocalizationLoss weighted_ghm = 3;
+    RegressionLocalizationLoss reg_loss = 4;
   }
-  bool encode_rad_error_by_sin = 4;
+  bool encode_rad_error_by_sin = 5;
 }
 
 // L2 location loss: 0.5 * ||weight * (a - b)|| ^ 2
@@ -58,7 +59,7 @@ message WeightedGHMLocalizationLoss {
   float momentum = 4;
   repeated float code_weight = 5;
 }
-
+message RegressionLocalizationLoss{}
 
 // Configuration for class prediction loss function.
 message ClassificationLoss {
@@ -69,6 +70,7 @@ message ClassificationLoss {
     SigmoidFocalClassificationLoss weighted_sigmoid_focal = 4;
     SoftmaxFocalClassificationLoss weighted_softmax_focal = 5;
     GHMClassificationLoss weighted_ghm = 6;
+    FocalClassificationLoss focal_loss = 7;
   }
 }
 
@@ -130,6 +132,10 @@ message BootstrappedSigmoidClassificationLoss {
   bool anchorwise_output = 3;
 }
 
+message FocalClassificationLoss{
+
+
+}
 // Configuation for hard example miner.
 message HardExampleMiner {
   // Maximum number of hard examples to be selected per image (prior to

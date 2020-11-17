@@ -7,6 +7,7 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
 from google.protobuf import symbol_database as _symbol_database
+from google.protobuf import descriptor_pb2
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
@@ -18,7 +19,6 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='second/protos/similarity.proto',
   package='second.protos',
   syntax='proto3',
-  serialized_options=None,
   serialized_pb=_b('\n\x1esecond/protos/similarity.proto\x12\rsecond.protos\"\xff\x01\n\x1aRegionSimilarityCalculator\x12\x43\n\x15rotate_iou_similarity\x18\x01 \x01(\x0b\x32\".second.protos.RotateIouSimilarityH\x00\x12\x45\n\x16nearest_iou_similarity\x18\x02 \x01(\x0b\x32#.second.protos.NearestIouSimilarityH\x00\x12@\n\x13\x64istance_similarity\x18\x03 \x01(\x0b\x32!.second.protos.DistanceSimilarityH\x00\x42\x13\n\x11region_similarity\"\x15\n\x13RotateIouSimilarity\"\x16\n\x14NearestIouSimilarity\"Z\n\x12\x44istanceSimilarity\x12\x15\n\rdistance_norm\x18\x01 \x01(\x02\x12\x15\n\rwith_rotation\x18\x02 \x01(\x08\x12\x16\n\x0erotation_alpha\x18\x03 \x01(\x02\x62\x06proto3')
 )
 
@@ -38,28 +38,28 @@ _REGIONSIMILARITYCALCULATOR = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='nearest_iou_similarity', full_name='second.protos.RegionSimilarityCalculator.nearest_iou_similarity', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='distance_similarity', full_name='second.protos.RegionSimilarityCalculator.distance_similarity', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -86,7 +86,7 @@ _ROTATEIOUSIMILARITY = _descriptor.Descriptor(
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -110,7 +110,7 @@ _NEARESTIOUSIMILARITY = _descriptor.Descriptor(
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -134,28 +134,28 @@ _DISTANCESIMILARITY = _descriptor.Descriptor(
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='with_rotation', full_name='second.protos.DistanceSimilarity.with_rotation', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='rotation_alpha', full_name='second.protos.DistanceSimilarity.rotation_alpha', index=2,
       number=3, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],

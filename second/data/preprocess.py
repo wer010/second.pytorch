@@ -13,10 +13,7 @@ from second.core import preprocess as prep
 from second.core.geometry import points_in_convex_polygon_3d_jit
 from second.data import kitti_common as kitti
 from second.utils import simplevis
-from second.utils.timer import simple_timer
 
-import seaborn as sns
-import matplotlib.pyplot as plt 
 
 def merge_second_batch(batch_list):
     example_merged = defaultdict(list)
@@ -31,6 +28,21 @@ def merge_second_batch(batch_list):
             ret[key] = np.concatenate(elems, axis=0)
         elif key == 'metadata':
             ret[key] = elems
+        elif key =='targets':
+            cache = []
+            for elem in elems:
+                for e in elem:
+                    cache.append(e)
+
+            ret['labels'] = [elem['labels'] for elem in cache]
+            ret['labels'] = np.stack(ret['labels'],axis=0)
+            ret['bbox_targets'] = [elem['bbox_targets'] for elem in cache]
+            ret['bbox_targets'] = np.stack(ret['bbox_targets'], axis=0)
+            ret['importance'] = [elem['importance'] for elem in cache]
+            ret['importance'] = np.stack(ret['importance'], axis=0)
+            ret['gt_names'] = [elem['gt_names'] for elem in cache]
+            ret['gt_classes'] = [elem['gt_classes'] for elem in cache]
+
         elif key == "calib":
             ret[key] = {}
             for elem in elems:
@@ -50,6 +62,16 @@ def merge_second_batch(batch_list):
             ret[key] = np.concatenate(coors, axis=0)
         elif key == 'metrics':
             ret[key] = elems
+        elif key in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels", "hm", "anno_box",
+                    "ind", "mask", "cat"]:
+            ret[key] = defaultdict(list)
+            res = []
+            for elem in elems:
+                for idx, ele in enumerate(elem):
+                    ret[key][str(idx)].append(ele)
+            for kk, vv in ret[key].items():
+                res.append(np.stack(vv))
+            ret[key] = res
         else:
             ret[key] = np.stack(elems, axis=0)
     return ret
@@ -118,7 +140,6 @@ def prep_pointcloud(input_dict,
                     gt_points_drop=0.0,
                     gt_drop_max_keep=10,
                     remove_points_after_sample=True,
-                    anchor_cache=None,
                     remove_environment=False,
                     random_crop=False,
                     reference_detections=None,
@@ -129,7 +150,8 @@ def prep_pointcloud(input_dict,
                     random_flip_x=True,
                     random_flip_y=True,
                     sample_importance=1.0,
-                    out_dtype=np.float32):
+                    out_dtype=np.float32,
+                    dataset_name = 'KITTI'):
     """convert point cloud to voxels, create targets if ground truths 
     exists.
 
@@ -139,6 +161,7 @@ def prep_pointcloud(input_dict,
     t = time.time()
     class_names = target_assigner.classes
     points = input_dict["lidar"]["points"]
+
     if training:
         anno_dict = input_dict["lidar"]["annotations"]
         gt_dict = {
@@ -175,7 +198,7 @@ def prep_pointcloud(input_dict,
         image_shape = input_dict["image"]["image_shape"]
         points = box_np_ops.remove_outside_points(
             points, calib["rect"], calib["Trv2c"], calib["P2"], image_shape)
-    if remove_environment is True and training:
+    if remove_environment and training:
         selected = kitti.keep_arrays_by_name(gt_names, target_assigner.classes)
         _dict_select(gt_dict, selected)
         masks = box_np_ops.points_in_rbbox(points, gt_dict["gt_boxes"])
@@ -183,11 +206,9 @@ def prep_pointcloud(input_dict,
     metrics = {}
 
     if training:
-        """
-        boxes_lidar = gt_dict["gt_boxes"]
-        bev_map = simplevis.nuscene_vis(points, boxes_lidar)
-        cv2.imshow('pre-noise', bev_map)
-        """
+        # boxes_lidar = gt_dict["gt_boxes"]
+        # bev_map = simplevis.nuscene_vis(points, boxes_lidar)
+        # cv2.imshow('pre-noise', bev_map)
         selected = kitti.drop_arrays_by_name(gt_dict["gt_names"], ["DontCare"])
         _dict_select(gt_dict, selected)
         if remove_unknown:
@@ -205,13 +226,16 @@ def prep_pointcloud(input_dict,
             point_counts = box_np_ops.points_count_rbbox(points, gt_dict["gt_boxes"])
             mask = point_counts >= min_points_in_gt
             _dict_select(gt_dict, mask)
+        # select the gt_box in the specified classes
         gt_boxes_mask = np.array(
             [n in class_names for n in gt_dict["gt_names"]], dtype=np.bool_)
+        # data augmentation
         if db_sampler is not None:
             group_ids = None
             if "group_ids" in gt_dict:
                 group_ids = gt_dict["group_ids"]
 
+            # data augmentation, using sample to add target
             sampled_dict = db_sampler.sample_all(
                 root_path,
                 gt_dict["gt_boxes"],
@@ -240,27 +264,25 @@ def prep_pointcloud(input_dict,
                     sampled_group_ids = sampled_dict["group_ids"]
                     gt_dict["group_ids"] = np.concatenate(
                         [gt_dict["group_ids"], sampled_group_ids])
-
+                # remove the raw points in the added box, to avoid overlap
                 if remove_points_after_sample:
                     masks = box_np_ops.points_in_rbbox(points,
                                                        sampled_gt_boxes)
                     points = points[np.logical_not(masks.any(-1))]
 
                 points = np.concatenate([sampled_points, points], axis=0)
-        pc_range = voxel_generator.point_cloud_range
         group_ids = None
         if "group_ids" in gt_dict:
             group_ids = gt_dict["group_ids"]
 
-        prep.noise_per_object_v3_(
-            gt_dict["gt_boxes"],
-            points,
-            gt_boxes_mask,
-            rotation_perturb=gt_rotation_noise,
-            center_noise_std=gt_loc_noise_std,
-            global_random_rot_range=global_random_rot_range,
-            group_ids=group_ids,
-            num_try=100)
+        prep.noise_per_object_v3_(gt_dict["gt_boxes"],
+                                    points,
+                                    gt_boxes_mask,
+                                    rotation_perturb=gt_rotation_noise,
+                                    center_noise_std=gt_loc_noise_std,
+                                    global_random_rot_range=global_random_rot_range,
+                                    group_ids=group_ids,
+                                    num_try=100)
 
         # should remove unrelated objects after noise per object
         # for k, v in gt_dict.items():
@@ -325,85 +347,42 @@ def prep_pointcloud(input_dict,
         example["calib"] = calib
     feature_map_size = grid_size[:2] // out_size_factor
     feature_map_size = [*feature_map_size, 1][::-1]
-    if anchor_cache is not None:
-        anchors = anchor_cache["anchors"]
-        anchors_bv = anchor_cache["anchors_bv"]
-        anchors_dict = anchor_cache["anchors_dict"]
-        matched_thresholds = anchor_cache["matched_thresholds"]
-        unmatched_thresholds = anchor_cache["unmatched_thresholds"]
 
-    else:
-        ret = target_assigner.generate_anchors(feature_map_size)
-        anchors = ret["anchors"]
-        anchors = anchors.reshape([-1, target_assigner.box_ndim])
-        anchors_dict = target_assigner.generate_anchors_dict(feature_map_size)
-        anchors_bv = box_np_ops.rbbox2d_to_near_bbox(
-            anchors[:, [0, 1, 3, 4, 6]])
-        matched_thresholds = ret["matched_thresholds"]
-        unmatched_thresholds = ret["unmatched_thresholds"]
-    example["anchors"] = anchors
-    anchors_mask = None
-    if anchor_area_threshold >= 0:
-        # slow with high resolution. recommend disable this forever.
-        coors = coordinates
-        dense_voxel_map = box_np_ops.sparse_sum_for_anchors_mask(
-            coors, tuple(grid_size[::-1][1:]))
-        dense_voxel_map = dense_voxel_map.cumsum(0)
-        dense_voxel_map = dense_voxel_map.cumsum(1)
-        anchors_area = box_np_ops.fused_get_anchors_area(
-            dense_voxel_map, anchors_bv, voxel_size, pc_range, grid_size)
-        anchors_mask = anchors_area > anchor_area_threshold
-        # example['anchors_mask'] = anchors_mask.astype(np.uint8)
-        example['anchors_mask'] = anchors_mask
-    # print("prep time", time.time() - t)
     metrics["prep_time"] = time.time() - t
     if not training:
         return example
-    example["gt_names"] = gt_dict["gt_names"]
     # voxel_labels = box_np_ops.assign_label_to_voxel(gt_boxes, coordinates,
     #                                                 voxel_size, coors_range)
     if create_targets:
         t1 = time.time()
-        targets_dict = target_assigner.assign(
-            anchors,
-            anchors_dict,
-            gt_dict["gt_boxes"],
-            anchors_mask,
-            gt_classes=gt_dict["gt_classes"],
-            gt_names=gt_dict["gt_names"],
-            matched_thresholds=matched_thresholds,
-            unmatched_thresholds=unmatched_thresholds,
-            importance=gt_dict["gt_importance"])
-        
-        """
-        boxes_lidar = gt_dict["gt_boxes"]
-        bev_map = simplevis.nuscene_vis(points, boxes_lidar, gt_dict["gt_names"])
-        assigned_anchors = anchors[targets_dict['labels'] > 0]
-        ignored_anchors = anchors[targets_dict['labels'] == -1]
-        bev_map = simplevis.draw_box_in_bev(bev_map, [-50, -50, 3, 50, 50, 1], ignored_anchors, [128, 128, 128], 2)
-        bev_map = simplevis.draw_box_in_bev(bev_map, [-50, -50, 3, 50, 50, 1], assigned_anchors, [255, 0, 0])
-        cv2.imshow('anchors', bev_map)
-        cv2.waitKey(0)
-        
-        boxes_lidar = gt_dict["gt_boxes"]
-        pp_map = np.zeros(grid_size[:2], dtype=np.float32)
-        voxels_max = np.max(voxels[:, :, 2], axis=1, keepdims=False)
-        voxels_min = np.min(voxels[:, :, 2], axis=1, keepdims=False)
-        voxels_height = voxels_max - voxels_min
-        voxels_height = np.minimum(voxels_height, 4)
-        # sns.distplot(voxels_height)
-        # plt.show()
-        pp_map[coordinates[:, 1], coordinates[:, 2]] = voxels_height / 4
-        pp_map = (pp_map * 255).astype(np.uint8)
-        pp_map = cv2.cvtColor(pp_map, cv2.COLOR_GRAY2RGB)
-        pp_map = simplevis.draw_box_in_bev(pp_map, [-50, -50, 3, 50, 50, 1], boxes_lidar, [128, 0, 128], 1)
-        cv2.imshow('heights', pp_map)
-        cv2.waitKey(0)
-        """
-        example.update({
-            'labels': targets_dict['labels'],
-            'reg_targets': targets_dict['bbox_targets'],
-            # 'reg_weights': targets_dict['bbox_outside_weights'],
-            'importance': targets_dict['importance'],
-        })
+        if target_assigner.name  == 'LabelAssigner':
+            targets_dict = target_assigner.assign(
+                gt_dict["gt_boxes"],
+                feature_map_size,
+                gt_classes=gt_dict["gt_classes"],
+                gt_names=gt_dict["gt_names"],
+                importance=gt_dict["gt_importance"],
+                training=training,
+                dataset_name= dataset_name
+            )
+            example.update({
+                'gt_dict': targets_dict['gt_dict'],
+                'hm': targets_dict['targets']['hm'],
+                'anno_box': targets_dict['targets']['anno_box'],
+                'ind': targets_dict['targets']['ind'],
+                'mask': targets_dict['targets']['mask'],
+                'cat': targets_dict['targets']['cat']
+            })
+        else:
+            targets_dict = target_assigner.assign(
+                gt_dict["gt_boxes"],
+                feature_map_size,
+                gt_classes=gt_dict["gt_classes"],
+                gt_names=gt_dict["gt_names"],
+                importance=gt_dict["gt_importance"])
+            example.update({
+                'targets': targets_dict
+            })
+
+
     return example

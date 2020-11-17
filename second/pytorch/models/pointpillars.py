@@ -445,19 +445,43 @@ class PointPillarsScatter(nn.Module):
 
         # batch_canvas will be the final output.
         batch_canvas = []
-        for batch_itt in range(batch_size):
+        num_voxel = voxel_features.shape[0]
+        n=0
+        if coords.shape[1]==5:
+            self.ny = self.output_shape[2]//2
+            self.nx = self.output_shape[3]//2
+            batch_itt_num = batch_size * 4
+        else:
+            batch_itt_num = batch_size
+        for batch_itt in range(batch_itt_num):
             # Create the canvas for this sample
             canvas = torch.zeros(
                 self.nchannels,
                 self.nx * self.ny,
                 dtype=voxel_features.dtype,
                 device=voxel_features.device)
-
             # Only include non-empty pillars
-            batch_mask = coords[:, 0] == batch_itt
-            this_coords = coords[batch_mask, :]
-            indices = this_coords[:, 2] * self.nx + this_coords[:, 3]
-            indices = indices.type(torch.long)
+            if coords.shape[1] == 5:
+                batch_mask = (coords[:, 0] == batch_itt//4) * (coords[:, 1] == batch_itt%4)
+                this_coords = coords[batch_mask, :]
+                indices = this_coords[:, 3] * self.nx + this_coords[:, 4]
+                indices = indices.type(torch.long)
+            else:
+                batch_mask = coords[:, 0] == batch_itt
+                this_coords = coords[batch_mask, :]
+                indices = this_coords[:, 2] * self.nx + this_coords[:, 3]
+                indices = indices.type(torch.long)
+            n+=np.sum(indices.shape)
+
+            nc = this_coords.cpu().numpy()
+            ni = indices.cpu().numpy()
+            # uni_2d = np.unique(nc[:,3:5],axis=0).shape
+            uni = np.unique(ni)
+            # repeat_value = ni[idx[count>1]]
+            # if np.size(repeat_value)!=0:
+            #     um = nc[ni==repeat_value[0]]
+
+            assert ni.shape ==uni.shape ,f'the indices shape {ni.shape} is not equal to its unique {uni.shape}'
             voxels = voxel_features[batch_mask, :]
             voxels = voxels.t()
 
@@ -466,11 +490,11 @@ class PointPillarsScatter(nn.Module):
 
             # Append to a list for later stacking.
             batch_canvas.append(canvas)
-
+        assert num_voxel==n
         # Stack to 3-dim tensor (batch-size, nchannels, nrows*ncols)
         batch_canvas = torch.stack(batch_canvas, 0)
 
         # Undo the column stacking to final 4-dim tensor
-        batch_canvas = batch_canvas.view(batch_size, self.nchannels, self.ny,
+        batch_canvas = batch_canvas.view(batch_itt_num, self.nchannels, self.ny,
                                          self.nx)
         return batch_canvas

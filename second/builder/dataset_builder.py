@@ -57,7 +57,7 @@ def build(input_reader_config,
     num_point_features = model_config.num_point_features
     out_size_factor = get_downsample_factor(model_config)
     assert out_size_factor > 0
-    cfg = input_reader_config
+    # cfg = input_reader_config
     db_sampler_cfg = prep_cfg.database_sampler
     db_sampler = None
     if len(db_sampler_cfg.sample_groups) > 0 or db_sampler_cfg.database_info_path != "":  # enable sample
@@ -101,31 +101,10 @@ def build(input_reader_config,
         min_points_in_gt=prep_cfg.min_num_of_points_in_gt,
         random_flip_x=prep_cfg.random_flip_x,
         random_flip_y=prep_cfg.random_flip_y,
-        sample_importance=prep_cfg.sample_importance)
-
-    ret = target_assigner.generate_anchors(feature_map_size)
+        sample_importance=prep_cfg.sample_importance,
+        dataset_name = dataset_cfg.dataset_class_name)
     class_names = target_assigner.classes
-    anchors_dict = target_assigner.generate_anchors_dict(feature_map_size)
-    anchors_list = []
-    for k, v in anchors_dict.items():
-        anchors_list.append(v["anchors"])
-    
-    # anchors = ret["anchors"]
-    anchors = np.concatenate(anchors_list, axis=0)
-    anchors = anchors.reshape([-1, target_assigner.box_ndim])
-    assert np.allclose(anchors, ret["anchors"].reshape(-1, target_assigner.box_ndim))
-    matched_thresholds = ret["matched_thresholds"]
-    unmatched_thresholds = ret["unmatched_thresholds"]
-    anchors_bv = box_np_ops.rbbox2d_to_near_bbox(
-        anchors[:, [0, 1, 3, 4, 6]])
-    anchor_cache = {
-        "anchors": anchors,
-        "anchors_bv": anchors_bv,
-        "matched_thresholds": matched_thresholds,
-        "unmatched_thresholds": unmatched_thresholds,
-        "anchors_dict": anchors_dict,
-    }
-    prep_func = partial(prep_func, anchor_cache=anchor_cache)
+
     dataset = dataset_cls(
         info_path=dataset_cfg.kitti_info_path,
         root_path=dataset_cfg.kitti_root_path,

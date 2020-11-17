@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numba
 import numpy as np
 from spconv.utils import rbbox_iou, rbbox_intersection
@@ -60,16 +58,12 @@ def second_box_encode(boxes,
     lt = np.log(lg / la)
     wt = np.log(wg / wa)
     ht = np.log(hg / ha)
-    rt = rg - ra
     cts = [g - a for g, a in zip(cgs, cas)]
     if smooth_dim:
         lt = lg / la - 1
         wt = wg / wa - 1
         ht = hg / ha - 1
-    else:
-        lt = np.log(lg / la)
-        wt = np.log(wg / wa)
-        ht = np.log(hg / ha)
+
     if encode_angle_to_vector:
         rgx = np.cos(rg)
         rgy = np.sin(rg)

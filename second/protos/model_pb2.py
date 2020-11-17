@@ -7,6 +7,7 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
 from google.protobuf import symbol_database as _symbol_database
+from google.protobuf import descriptor_pb2
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
@@ -19,7 +20,6 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='second/protos/model.proto',
   package='second.protos',
   syntax='proto3',
-  serialized_options=None,
   serialized_pb=_b('\n\x19second/protos/model.proto\x12\rsecond.protos\x1a\x1asecond/protos/second.proto\"D\n\x0e\x44\x65tectionModel\x12)\n\x06second\x18\x01 \x01(\x0b\x32\x17.second.protos.VoxelNetH\x00\x42\x07\n\x05modelb\x06proto3')
   ,
   dependencies=[second_dot_protos_dot_second__pb2.DESCRIPTOR,])
@@ -40,14 +40,14 @@ _DETECTIONMODEL = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],

@@ -14,8 +14,6 @@ from second.pytorch.core.losses import (WeightedSigmoidClassificationLoss,
                                         WeightedSoftmaxClassificationLoss)
 from second.pytorch.models import middle, pointpillars, rpn, voxel_encoder
 from torchplus import metrics
-from second.pytorch.utils import torch_timer
-
 
 def _get_pos_neg_loss(cls_loss, labels):
     # cls_loss: [N, num_anchors, num_class]
@@ -242,7 +240,7 @@ class VoxelNet(nn.Module):
         batch_size_dev = cls_preds.shape[0]
         self.start_timer("loss forward")
         labels = example['labels']
-        reg_targets = example['reg_targets']
+        reg_targets = example['bbox_targets']
         importance = example['importance']
         self.start_timer("prepare weight forward")
         cls_weights, reg_weights, cared = prepare_loss_weights(
@@ -283,7 +281,6 @@ class VoxelNet(nn.Module):
         self.end_timer("create_loss forward")
         if self._use_direction_classifier:
             dir_targets = get_direction_target(
-                example['anchors'],
                 reg_targets,
                 dir_offset=self._dir_offset,
                 num_bins=self._num_direction_bins)
@@ -307,6 +304,8 @@ class VoxelNet(nn.Module):
             "loc_loss_reduced": loc_loss_reduced,
             "cared": cared,
         }
+
+
         if self._use_direction_classifier:
             res["dir_loss_reduced"] = dir_loss
         return res
@@ -355,16 +354,15 @@ class VoxelNet(nn.Module):
             voxels = torch.cat(voxel_list, dim=0)
             num_points = torch.cat(num_points_list, dim=0)
             coors = torch.cat(coors_list, dim=0)
-        batch_anchors = example["anchors"]
-        batch_size_dev = batch_anchors.shape[0]
+        batch_size_dev = example["num_voxels"].shape[0]
         # features: [num_voxels, max_num_points_per_voxel, 7]
         # num_points: [num_voxels]
         # coors: [num_voxels, 4]
         preds_dict = self.network_forward(voxels, num_points, coors, batch_size_dev)
         # need to check size.
         box_preds = preds_dict["box_preds"].view(batch_size_dev, -1, self._box_coder.code_size)
-        err_msg = f"num_anchors={batch_anchors.shape[1]}, but num_output={box_preds.shape[1]}. please check size"
-        assert batch_anchors.shape[1] == box_preds.shape[1], err_msg
+        # err_msg = f"num_anchors={batch_anchors.shape[1]}, but num_output={box_preds.shape[1]}. please check size"
+        # assert batch_anchors.shape[1] == box_preds.shape[1], err_msg
         if self.training:
             return self.loss(example, preds_dict)
         else:
@@ -701,6 +699,8 @@ class VoxelNet(nn.Module):
         return net
 
 
+
+
 def add_sin_difference(boxes1, boxes2, boxes1_rot, boxes2_rot, factor=1.0):
     if factor != 1.0:
         boxes1_rot = factor * boxes1_rot
@@ -811,18 +811,15 @@ def assign_weight_to_each_class(labels,
     return weights
 
 
-def get_direction_target(anchors,
-                         reg_targets,
+def get_direction_target(reg_targets,
                          one_hot=True,
                          dir_offset=0,
                          num_bins=2):
-    batch_size = reg_targets.shape[0]
-    anchors = anchors.view(batch_size, -1, anchors.shape[-1])
-    rot_gt = reg_targets[..., 6] + anchors[..., 6]
+    rot_gt = reg_targets[..., 6]
     offset_rot = box_torch_ops.limit_period(rot_gt - dir_offset, 0, 2 * np.pi)
     dir_cls_targets = torch.floor(offset_rot / (2 * np.pi / num_bins)).long()
     dir_cls_targets = torch.clamp(dir_cls_targets, min=0, max=num_bins - 1)
     if one_hot:
         dir_cls_targets = torchplus.nn.one_hot(
-            dir_cls_targets, num_bins, dtype=anchors.dtype)
+            dir_cls_targets, num_bins, dtype=reg_targets.dtype)
     return dir_cls_targets

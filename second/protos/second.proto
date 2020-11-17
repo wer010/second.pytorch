@@ -63,5 +63,7 @@ message VoxelNet {
 
   // deprecated in future
   bool lidar_input = 24;
+  bool use_quadrant = 25;
+
   
 }

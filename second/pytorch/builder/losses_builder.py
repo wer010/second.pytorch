@@ -123,6 +123,9 @@ def _build_localization_loss(loss_config):
       code_weight = config.code_weight
     return GHMRLoss(config.mu, config.bins, config.momentum, code_weight)
 
+  if loss_type == 'reg_loss':
+    return losses.RegLoss()
+
   raise ValueError('Empty loss config.')
 
 
@@ -186,5 +189,8 @@ def _build_classification_loss(loss_config):
     return losses.BootstrappedSigmoidClassificationLoss(
         alpha=config.alpha,
         bootstrap_type=('hard' if config.hard_bootstrap else 'soft'))
+
+  if loss_type == 'focal_loss':
+    return losses.FocalLoss()
 
   raise ValueError('Empty loss config.')

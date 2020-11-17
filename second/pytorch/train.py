@@ -1,20 +1,17 @@
-import copy
+import sys
+sys.path.append('/home/lanhai/Projects/second.pytorch')
 import json
-import os
 from pathlib import Path
 import pickle
-import shutil
 import time
+from datetime import datetime
 import re 
 import fire
 import numpy as np
 import torch
 from google.protobuf import text_format
-
-import second.data.kitti_common as kitti
 import torchplus
 from second.builder import target_assigner_builder, voxel_builder
-from second.core import box_np_ops
 from second.data.preprocess import merge_second_batch, merge_second_batch_multigpu
 from second.protos import pipeline_pb2
 from second.pytorch.builder import (box_coder_builder, input_reader_builder,
@@ -23,48 +20,24 @@ from second.pytorch.builder import (box_coder_builder, input_reader_builder,
 from second.utils.log_tool import SimpleModelLog
 from second.utils.progress_bar import ProgressBar
 import psutil
+from second.pytorch.utils import data_to_tensor
 
-def example_convert_to_torch(example, dtype=torch.float32,
-                             device=None) -> dict:
-    device = device or torch.device("cuda:0")
-    example_torch = {}
-    float_names = [
-        "voxels", "anchors", "reg_targets", "reg_weights", "bev_map", "importance"
-    ]
-    for k, v in example.items():
-        if k in float_names:
-            # slow when directly provide fp32 data with dtype=torch.half
-            example_torch[k] = torch.tensor(
-                v, dtype=torch.float32, device=device).to(dtype)
-        elif k in ["coordinates", "labels", "num_points"]:
-            example_torch[k] = torch.tensor(
-                v, dtype=torch.int32, device=device)
-        elif k in ["anchors_mask"]:
-            example_torch[k] = torch.tensor(
-                v, dtype=torch.uint8, device=device)
-        elif k == "calib":
-            calib = {}
-            for k1, v1 in v.items():
-                calib[k1] = torch.tensor(
-                    v1, dtype=dtype, device=device).to(dtype)
-            example_torch[k] = calib
-        elif k == "num_voxels":
-            example_torch[k] = torch.tensor(v)
-        else:
-            example_torch[k] = v
-    return example_torch
+
+
+
 
 
 def build_network(model_cfg, measure_time=False):
+    # generate voxel
     voxel_generator = voxel_builder.build(model_cfg.voxel_generator)
+
     bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
     box_coder = box_coder_builder.build(model_cfg.box_coder)
-    target_assigner_cfg = model_cfg.target_assigner
-    target_assigner = target_assigner_builder.build(target_assigner_cfg,
-                                                    bv_range, box_coder)
-    box_coder.custom_ndim = target_assigner._anchor_generators[0].custom_ndim
-    net = second_builder.build(
-        model_cfg, voxel_generator, target_assigner, measure_time=measure_time)
+    target_assigner = target_assigner_builder.build(model_cfg, bv_range, box_coder)
+
+    # box_coder.custom_ndim = target_assigner._anchor_generators[0].custom_ndim
+    # model build
+    net = second_builder.build(model_cfg, voxel_generator, target_assigner, measure_time=measure_time)
     return net
 
 def _worker_init_fn(worker_id):
@@ -145,11 +118,15 @@ def train(config_path,
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model_dir = str(Path(model_dir).resolve())
+    model_dir = str(Path(model_dir).resolve()) + '/'+ datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+    use_quadrant = True
+
     if create_folder:
         if Path(model_dir).exists():
             model_dir = torchplus.train.create_folder(model_dir)
     model_dir = Path(model_dir)
+    #TODO: the resume function is broken now
     if not resume and model_dir.exists():
         raise ValueError("model dir exists and you don't specify resume.")
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -174,7 +151,7 @@ def train(config_path,
     eval_input_cfg = config.eval_input_reader
     model_cfg = config.model.second
     train_cfg = config.train_config
-
+    print(type(model_cfg))
     net = build_network(model_cfg, measure_time).to(device)
     # if train_cfg.enable_mixed_precision:
     #     net.half()
@@ -234,6 +211,7 @@ def train(config_path,
     else:
         float_dtype = torch.float32
 
+
     if multi_gpu:
         num_gpu = torch.cuda.device_count()
         print(f"MULTI-GPU: use {num_gpu} gpu")
@@ -241,11 +219,11 @@ def train(config_path,
     else:
         collate_fn = merge_second_batch
         num_gpu = 1
-
     ######################
     # PREPARE INPUT
     ######################
-    dataset = input_reader_builder.build(
+
+    train_dataset = input_reader_builder.build(
         input_cfg,
         model_cfg,
         training=True,
@@ -259,10 +237,10 @@ def train(config_path,
         voxel_generator=voxel_generator,
         target_assigner=target_assigner)
 
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
         batch_size=input_cfg.batch_size * num_gpu,
-        shuffle=True,
+        shuffle=False,
         num_workers=input_cfg.preprocess.num_workers * num_gpu,
         pin_memory=False,
         collate_fn=collate_fn,
@@ -295,13 +273,17 @@ def train(config_path,
         while True:
             if clear_metrics_every_epoch:
                 net.clear_metrics()
-            for example in dataloader:
+
+            for example in train_dataloader:
                 lr_scheduler.step(net.get_global_step())
                 time_metrics = example["metrics"]
                 example.pop("metrics")
-                example_torch = example_convert_to_torch(example, float_dtype)
+                if model_cfg.use_quadrant:
+                    example = data_to_tensor.cut_quadrant(example, target_assigner.voxel_shape)
 
-                batch_size = example["anchors"].shape[0]
+                example_torch = data_to_tensor.example_convert_to_torch(example, float_dtype)
+
+                batch_size = example['num_points'].shape[0]
 
                 ret_dict = net_parallel(example_torch)
                 cls_preds = ret_dict["cls_preds"]
@@ -312,9 +294,10 @@ def train(config_path,
                 cls_neg_loss = ret_dict["cls_neg_loss"].mean()
                 loc_loss = ret_dict["loc_loss"]
                 cls_loss = ret_dict["cls_loss"]
-                
                 cared = ret_dict["cared"]
+
                 labels = example_torch["labels"]
+                loss = ret_dict['loss']
                 if train_cfg.enable_mixed_precision:
                     with amp.scale_loss(loss, amp_optimizer) as scaled_loss:
                         scaled_loss.backward()
@@ -334,10 +317,7 @@ def train(config_path,
                 metrics = {}
                 num_pos = int((labels > 0)[0].float().sum().cpu().numpy())
                 num_neg = int((labels == 0)[0].float().sum().cpu().numpy())
-                if 'anchors_mask' not in example_torch:
-                    num_anchors = example_torch['anchors'].shape[1]
-                else:
-                    num_anchors = int(example_torch['anchors_mask'][0].sum())
+
                 global_step = net.get_global_step()
 
                 if global_step % display_step == 0:
@@ -370,7 +350,6 @@ def train(config_path,
                         "num_vox": int(example_torch["voxels"].shape[0]),
                         "num_pos": int(num_pos),
                         "num_neg": int(num_neg),
-                        "num_anchors": int(num_anchors),
                         "lr": float(amp_optimizer.lr),
                         "mem_usage": psutil.virtual_memory().percent,
                     }
@@ -395,7 +374,7 @@ def train(config_path,
                     prog_bar.start((len(eval_dataset) + eval_input_cfg.batch_size - 1)
                                 // eval_input_cfg.batch_size)
                     for example in iter(eval_dataloader):
-                        example = example_convert_to_torch(example, float_dtype)
+                        example = data_to_tensor.example_convert_to_torch(example, float_dtype)
                         detections += net(example)
                         prog_bar.print_bar()
 
@@ -516,7 +495,7 @@ def evaluate(config_path,
             prep_times.append(time.time() - t2)
             torch.cuda.synchronize()
             t1 = time.time()
-        example = example_convert_to_torch(example, float_dtype)
+        example = data_to_tensor.example_convert_to_torch(example, float_dtype)
         if measure_time:
             torch.cuda.synchronize()
             prep_example_times.append(time.time() - t1)

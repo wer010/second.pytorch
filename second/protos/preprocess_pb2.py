@@ -7,6 +7,7 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
 from google.protobuf import symbol_database as _symbol_database
+from google.protobuf import descriptor_pb2
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
@@ -18,7 +19,6 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='second/protos/preprocess.proto',
   package='second.protos',
   syntax='proto3',
-  serialized_options=None,
   serialized_pb=_b('\n\x1esecond/protos/preprocess.proto\x12\rsecond.protos\"\xd6\x01\n\x19\x44\x61tabasePreprocessingStep\x12\x43\n\x14\x66ilter_by_difficulty\x18\x01 \x01(\x0b\x32#.second.protos.DBFilterByDifficultyH\x00\x12U\n\x18\x66ilter_by_min_num_points\x18\x02 \x01(\x0b\x32\x31.second.protos.DBFilterByMinNumPointInGroundTruthH\x00\x42\x1d\n\x1b\x64\x61tabase_preprocessing_step\"4\n\x14\x44\x42\x46ilterByDifficulty\x12\x1c\n\x14removed_difficulties\x18\x01 \x03(\x05\"\xc3\x01\n\"DBFilterByMinNumPointInGroundTruth\x12\x64\n\x13min_num_point_pairs\x18\x01 \x03(\x0b\x32G.second.protos.DBFilterByMinNumPointInGroundTruth.MinNumPointPairsEntry\x1a\x37\n\x15MinNumPointPairsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\x62\x06proto3')
 )
 
@@ -38,21 +38,21 @@ _DATABASEPREPROCESSINGSTEP = _descriptor.Descriptor(
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='filter_by_min_num_points', full_name='second.protos.DatabasePreprocessingStep.filter_by_min_num_points', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -79,14 +79,14 @@ _DBFILTERBYDIFFICULTY = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -110,21 +110,21 @@ _DBFILTERBYMINNUMPOINTINGROUNDTRUTH_MINNUMPOINTPAIRSENTRY = _descriptor.Descript
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='value', full_name='second.protos.DBFilterByMinNumPointInGroundTruth.MinNumPointPairsEntry.value', index=1,
       number=2, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[],
   enum_types=[
   ],
-  serialized_options=_b('8\001'),
+  options=_descriptor._ParseOptions(descriptor_pb2.MessageOptions(), _b('8\001')),
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -147,14 +147,14 @@ _DBFILTERBYMINNUMPOINTINGROUNDTRUTH = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
   nested_types=[_DBFILTERBYMINNUMPOINTINGROUNDTRUTH_MINNUMPOINTPAIRSENTRY, ],
   enum_types=[
   ],
-  serialized_options=None,
+  options=None,
   is_extendable=False,
   syntax='proto3',
   extension_ranges=[],
@@ -209,5 +209,6 @@ _sym_db.RegisterMessage(DBFilterByMinNumPointInGroundTruth)
 _sym_db.RegisterMessage(DBFilterByMinNumPointInGroundTruth.MinNumPointPairsEntry)
 
 
-_DBFILTERBYMINNUMPOINTINGROUNDTRUTH_MINNUMPOINTPAIRSENTRY._options = None
+_DBFILTERBYMINNUMPOINTINGROUNDTRUTH_MINNUMPOINTPAIRSENTRY.has_options = True
+_DBFILTERBYMINNUMPOINTINGROUNDTRUTH_MINNUMPOINTPAIRSENTRY._options = _descriptor._ParseOptions(descriptor_pb2.MessageOptions(), _b('8\001'))
 # @@protoc_insertion_point(module_scope)

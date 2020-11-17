@@ -3,7 +3,8 @@ from pathlib import Path
 import pickle
 
 import fire
-
+import sys
+sys.path.append('/home/lanhai/Projects/second.pytorch/')
 import second.data.kitti_dataset as kitti_ds
 import second.data.nuscenes_dataset as nu_ds
 from second.data.all_dataset import create_groundtruth_database

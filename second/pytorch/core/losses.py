@@ -450,3 +450,87 @@ class BootstrappedSigmoidClassificationLoss(Loss):
         labels=bootstrap_target_tensor, logits=prediction_tensor))
     return per_entry_cross_ent * weights.unsqueeze(2)
 
+
+class FocalLoss(Loss):
+
+  def __init__(self):
+    self.name = 'FocalLoss'
+
+  def _compute_loss(self, pred, gt):
+    pos_inds = gt.eq(1).float()
+    neg_inds = gt.lt(1).float()
+
+    neg_weights = torch.pow(1 - gt, 4)
+
+    loss = 0
+
+    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
+    neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
+
+    num_pos = pos_inds.float().sum()
+
+    pos_loss = pos_loss.sum()
+    neg_loss = neg_loss.sum()
+
+    if num_pos == 0:
+      loss = loss - neg_loss
+    else:
+      loss = loss - (pos_loss + neg_loss) / num_pos
+    return loss
+
+
+class RegLoss(Loss):
+  '''Regression loss for an output tensor
+    Arguments:
+      output (batch x dim x h x w)
+      mask (batch x max_objects)
+      ind (batch x max_objects)
+      target (batch x max_objects x dim)
+  '''
+
+  def __init__(self):
+    self.name = 'RegLoss'
+
+
+
+  def _gather_feat(self, feat, ind, mask=None):
+    dim = feat.size(2)
+    ind = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
+    feat = feat.gather(1, ind)
+    if mask is not None:
+      mask = mask.unsqueeze(2).expand_as(feat)
+      feat = feat[mask]
+      feat = feat.view(-1, dim)
+    return feat
+
+  def _transpose_and_gather_feat(self, feat, ind):
+    feat = feat.permute(0, 2, 3, 1).contiguous()
+    feat = feat.view(feat.size(0), -1, feat.size(3))
+    feat = self._gather_feat(feat, ind)
+    return feat
+
+  def _compute_loss(self, output,target, mask, ind):
+
+    pred = self._transpose_and_gather_feat(output, ind)
+    
+    num = mask.float().sum()
+    mask = mask.unsqueeze(2).expand_as(target).float()
+    isnotnan = (~ torch.isnan(target)).float()
+    mask *= isnotnan
+    pred = pred * mask
+    target = target * mask
+
+    loss = torch.abs(pred - target)
+    loss = loss.transpose(2, 0)
+
+    loss = torch.sum(loss, dim=2)
+    loss = torch.sum(loss, dim=1)
+    # else:
+    #  # D x M x B
+    #  loss = loss.reshape(loss.shape[0], -1)
+
+    loss = loss / (num + 1e-4)
+    # import pdb; pdb.set_trace()
+    return loss
+
+

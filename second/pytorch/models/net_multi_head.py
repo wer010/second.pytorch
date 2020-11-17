@@ -174,3 +174,5 @@ class VoxelNetNuscenesMultiHead(VoxelNet):
         if self._use_direction_classifier:
             res["dir_cls_preds"] = torch.cat([large["dir_cls_preds"], small["dir_cls_preds"]], dim=1)
         return res
+
+

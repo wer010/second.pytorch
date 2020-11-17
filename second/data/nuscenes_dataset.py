@@ -9,7 +9,7 @@ import subprocess
 
 import fire
 import numpy as np
-
+import sys
 from second.core import box_np_ops
 from second.core import preprocess as prep
 from second.data import kitti_common as kitti
@@ -142,6 +142,7 @@ class NuScenesDataset(Dataset):
         example["metadata"] = input_dict["metadata"]
         if "anchors_mask" in example:
             example["anchors_mask"] = example["anchors_mask"].astype(np.uint8)
+
         return example
 
     def get_sensor_data(self, query):
@@ -715,7 +716,7 @@ def _fill_trainval_infos(nusc,
 
 
 def create_nuscenes_infos(root_path, version="v1.0-trainval", max_sweeps=10):
-    from nuscenes.nuscenes import NuScenes
+    from second.data.nuscenes import NuScenes
     nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
     from nuscenes.utils import splits
     available_vers = ["v1.0-trainval", "v1.0-test", "v1.0-mini"]
