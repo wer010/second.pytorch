@@ -79,7 +79,6 @@ def create_target_np(all_anchors,
         anchors = all_anchors
         inds_inside = None
     num_inside = len(inds_inside) if inds_inside is not None else total_anchors
-    box_ndim = all_anchors.shape[1]
     logger.debug('total_anchors: {}'.format(total_anchors))
     logger.debug('inds_inside: {}'.format(num_inside))
     logger.debug('anchors.shape: {}'.format(anchors.shape))
@@ -110,13 +109,7 @@ def create_target_np(all_anchors,
         # must remove gt which doesn't match any anchor.
         empty_gt_mask = gt_to_anchor_max == 0
         gt_to_anchor_max[empty_gt_mask] = -1
-        """
-        if not np.all(empty_gt_mask):
-            gt_to_anchor_max = gt_to_anchor_max[empty_gt_mask]
-            anchor_by_gt_overlap = anchor_by_gt_overlap[:, empty_gt_mask]
-            gt_classes = gt_classes[empty_gt_mask]
-            gt_boxes = gt_boxes[empty_gt_mask]
-        """
+
         # Find all anchors that share the max overlap amount
         # (this includes many ties)
         anchors_with_max_overlap = np.where(anchor_by_gt_overlap == gt_to_anchor_max)[0]

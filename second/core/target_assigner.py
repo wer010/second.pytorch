@@ -224,7 +224,6 @@ class LabelAssigner():
     def classes(self):
         return self._classes
 
-# TODO: something goes wrong, but not big deal
 class TargetAssigner(LabelAssigner):
     def __init__(self, model_cfg, box_coder):
         super().__init__(model_cfg, box_coder)
@@ -264,71 +263,21 @@ class TargetAssigner(LabelAssigner):
         return anchors_mask
 
 
-
     def assign(self,
+               anchors_all,
                gt_boxes,
-               feature_map_size,
                gt_classes=None,
                gt_names=None,
                importance=None):
-        if self.use_quadrant:
-            feature_map_size[1] = feature_map_size[1]//2
-            feature_map_size[2] = feature_map_size[2] // 2
 
+        anchors_dict = anchors_all["anchors_dict"]
+        anchors = anchors_all["anchors"]
+        matched_thresholds = anchors_all["matched_thresholds"]
+        unmatched_thresholds = anchors_all["unmatched_thresholds"]
 
-            quadrant_1st_mask = np.multiply(gt_boxes[:,0] >= 0, gt_boxes[:,1] >= 0)
-            quadrant_2nd_mask = np.multiply(gt_boxes[:,0] < 0, gt_boxes[:,1] >= 0)
-            quadrant_3rd_mask = np.multiply(gt_boxes[:,0] < 0, gt_boxes[:,1] < 0)
-            quadrant_4th_mask = np.multiply(gt_boxes[:,0] >= 0, gt_boxes[:,1] < 0)
-
-            n = np.sum(quadrant_1st_mask) + \
-                np.sum(quadrant_2nd_mask) + \
-                np.sum(quadrant_3rd_mask) + \
-                np.sum(quadrant_4th_mask)
-            assert gt_boxes.shape[0] == n, f'{gt_boxes.shape[0]} is not equal to {n}'
-            gt_boxes_1st_quadrant = gt_boxes[quadrant_1st_mask, :]
-            gt_names_1st_quadrant = gt_names[quadrant_1st_mask]
-            gt_classes_1st_quadrant = gt_classes[quadrant_1st_mask]
-
-            gt_boxes_2nd_quadrant = gt_boxes[quadrant_2nd_mask, :]
-            gt_boxes_2nd_quadrant[:,0] = -gt_boxes_2nd_quadrant[:,0]
-            gt_boxes_2nd_quadrant[:, 6] = -gt_boxes_2nd_quadrant[:, 6]
-            gt_names_2nd_quadrant = gt_names[quadrant_2nd_mask]
-            gt_classes_2nd_quadrant = gt_classes[quadrant_2nd_mask]
-
-            gt_boxes_3rd_quadrant = gt_boxes[quadrant_3rd_mask, :]
-            gt_boxes_3rd_quadrant[:,0:2] = -gt_boxes_3rd_quadrant[:,0:2]
-            gt_boxes_3rd_quadrant[:, 6] = gt_boxes_3rd_quadrant[:, 6] + np.pi
-            gt_names_3rd_quadrant = gt_names[quadrant_3rd_mask]
-            gt_classes_3rd_quadrant = gt_classes[quadrant_3rd_mask]
-
-
-            gt_boxes_4th_quadrant = gt_boxes[quadrant_4th_mask, :]
-            gt_boxes_4th_quadrant[:,1] = -gt_boxes_4th_quadrant[:,1]
-            gt_boxes_4th_quadrant[:, 6] = -gt_boxes_4th_quadrant[:, 6] + np.pi
-            gt_names_4th_quadrant = gt_names[quadrant_4th_mask]
-            gt_classes_4th_quadrant = gt_classes[quadrant_4th_mask]
-
-            mapped_gt_boxes = [gt_boxes_1st_quadrant,gt_boxes_2nd_quadrant,gt_boxes_3rd_quadrant,gt_boxes_4th_quadrant]
-            mapped_gt_names = [gt_names_1st_quadrant,gt_names_2nd_quadrant,gt_names_3rd_quadrant,gt_names_4th_quadrant]
-            mapped_gt_classes = [gt_classes_1st_quadrant,gt_classes_2nd_quadrant,gt_classes_3rd_quadrant,gt_classes_4th_quadrant]
         if self._assign_per_class:
-            anchors_dict = self.generate_anchors_dict(feature_map_size)
-            if self.use_quadrant:
-                res = []
-                for gt_box, gt_class, gt_name in zip(mapped_gt_boxes,mapped_gt_names,mapped_gt_classes):
-                    d = self.assign_per_class(anchors_dict, gt_box, gt_class, gt_name, importance=importance,anchors_mask=None)
-                    d['gt_names'] = gt_name
-                    d['gt_classes'] = gt_class
-                    res.append(d)
-                return res
-            else:
-                return self.assign_per_class(anchors_dict, gt_boxes, gt_classes, gt_names, importance=importance,anchors_mask=None)
+            return self.assign_per_class(anchors_dict, gt_boxes, gt_classes, gt_names, importance=importance,anchors_mask=None)
         else:
-            ret = self.generate_anchors(feature_map_size)
-            anchors = ret['anchors'].reshape(-1, self.box_ndim)
-            matched_thresholds = ret["matched_thresholds"]
-            unmatched_thresholds = ret["unmatched_thresholds"]
             return self.assign_all(anchors, gt_boxes, gt_classes, matched_thresholds, unmatched_thresholds, importance=importance,anchors_mask=None)
 
     def assign_all(self,
@@ -390,7 +339,6 @@ class TargetAssigner(LabelAssigner):
         anchor_loc_idx = 0
         anchor_gene_idx = 0
         for class_name, anchor_dict in anchors_dict.items():
-
             mask = np.array([c == class_name for c in gt_names], dtype=np.bool_)
             num_loc = anchor_dict["anchors"].shape[-2]
             if anchors_mask is not None:
@@ -414,7 +362,7 @@ class TargetAssigner(LabelAssigner):
                 rpn_batch_size=self._sample_size,
                 norm_by_num_examples=False,
                 box_code_size=self.box_coder.code_size,
-                gt_importance=importance)
+                gt_importance=importance[mask])
             # print(f"num of positive:", np.sum(targets["labels"] == self.classes.index(class_name) + 1))
             anchor_loc_idx += num_loc
             targets_list.append(targets)
@@ -430,88 +378,8 @@ class TargetAssigner(LabelAssigner):
         targets_dict["importance"] = np.concatenate([v.reshape(-1) for v in targets_dict["importance"]], axis=0)
         targets_dict["labels"] = targets_dict["labels"].reshape(-1)
         targets_dict["importance"] = targets_dict["importance"].reshape(-1)
-
         return targets_dict
 
-    def generate_anchors(self, feature_map_size):
-        anchors_list = []
-        ndim = len(feature_map_size)
-        matched_thresholds = [
-            a.match_threshold for a in self._anchor_generators
-        ]
-        unmatched_thresholds = [
-            a.unmatch_threshold for a in self._anchor_generators
-        ]
-        match_list, unmatch_list = [], []
-        if self._feature_map_sizes is not None:
-            feature_map_sizes = self._feature_map_sizes
-        else:
-            feature_map_sizes = [feature_map_size] * len(self._anchor_generators)
-        idx = 0
-        for anchor_generator, match_thresh, unmatch_thresh, fsize in zip(
-                self._anchor_generators, matched_thresholds,
-                unmatched_thresholds, feature_map_sizes):
-            if len(fsize) == 0:
-                fsize = feature_map_size
-                self._feature_map_sizes[idx] = feature_map_size
-            anchors = anchor_generator.generate(fsize)
-            anchors = anchors.reshape([*fsize, -1, self.box_ndim])
-            anchors = anchors.transpose(ndim, *range(0, ndim), ndim + 1)
-            anchors_list.append(anchors.reshape(-1, self.box_ndim))
-            num_anchors = np.prod(anchors.shape[:-1])
-            match_list.append(
-                np.full([num_anchors], match_thresh, anchors.dtype))
-            unmatch_list.append(
-                np.full([num_anchors], unmatch_thresh, anchors.dtype))
-            idx += 1
-        anchors = np.concatenate(anchors_list, axis=0)
-        matched_thresholds = np.concatenate(match_list, axis=0)
-        unmatched_thresholds = np.concatenate(unmatch_list, axis=0)
-        return {
-            "anchors": anchors,
-            "matched_thresholds": matched_thresholds,
-            "unmatched_thresholds": unmatched_thresholds
-        }
-
-    def generate_anchors_dict(self, feature_map_size):
-        ndim = len(feature_map_size)
-        anchors_list = []
-        matched_thresholds = [
-            a.match_threshold for a in self._anchor_generators
-        ]
-        unmatched_thresholds = [
-            a.unmatch_threshold for a in self._anchor_generators
-        ]
-        match_list, unmatch_list = [], []
-        anchors_dict = OrderedDict()
-        for a in self._anchor_generators:
-            anchors_dict[a.class_name] = {}
-        if self._feature_map_sizes is not None:
-            feature_map_sizes = self._feature_map_sizes
-        else:
-            feature_map_sizes = [feature_map_size] * len(self._anchor_generators)
-        idx = 0
-        for anchor_generator, match_thresh, unmatch_thresh, fsize in zip(
-                self._anchor_generators, matched_thresholds,
-                unmatched_thresholds, feature_map_sizes):
-            if len(fsize) == 0:
-                fsize = feature_map_size
-                self._feature_map_sizes[idx] = feature_map_size
-
-            anchors = anchor_generator.generate(fsize)
-            anchors = anchors.reshape([*fsize, -1, self.box_ndim])
-            anchors = anchors.transpose(ndim, *range(0, ndim), ndim + 1)
-            num_anchors = np.prod(anchors.shape[:-1])
-            match_list.append(
-                np.full([num_anchors], match_thresh, anchors.dtype))
-            unmatch_list.append(
-                np.full([num_anchors], unmatch_thresh, anchors.dtype))
-            class_name = anchor_generator.class_name
-            anchors_dict[class_name]["anchors"] = anchors.reshape(-1, self.box_ndim)
-            anchors_dict[class_name]["matched_thresholds"] = match_list[-1]
-            anchors_dict[class_name]["unmatched_thresholds"] = unmatch_list[-1]
-            idx += 1
-        return anchors_dict
 
     @property
     def num_anchors_per_location(self):
@@ -524,30 +392,30 @@ class TargetAssigner(LabelAssigner):
     def box_ndim(self):
         return self._anchor_generators[0].ndim
 
-    def num_anchors(self, class_name):
-        if isinstance(class_name, int):
-            class_name = self._classes[class_name]
-        assert class_name in self._classes
-        class_idx = self._classes.index(class_name)
-        ag = self._anchor_generators[class_idx]
-        feature_map_size = self._feature_map_sizes[class_idx]
-        return np.prod(feature_map_size) * ag.num_anchors_per_localization
-
-    def anchors_range(self, class_name):
-        if isinstance(class_name, int):
-            class_name = self._classes[class_name]
-        assert class_name in self._classes
-        num_anchors = 0
-        anchor_ranges = []
-        for name in self._classes:
-            anchor_ranges.append((num_anchors, num_anchors + self.num_anchors(name)))
-            num_anchors += anchor_ranges[-1][1] - num_anchors
-        return anchor_ranges[self._classes.index(class_name)]
-        
-    def num_anchors_per_location_class(self, class_name):
-        if isinstance(class_name, int):
-            class_name = self._classes[class_name]
-        assert class_name in self._classes
-        class_idx = self._classes.index(class_name)
-        return self._anchor_generators[class_idx].num_anchors_per_localization
+    # def num_anchors(self, class_name):
+    #     if isinstance(class_name, int):
+    #         class_name = self._classes[class_name]
+    #     assert class_name in self._classes
+    #     class_idx = self._classes.index(class_name)
+    #     ag = self._anchor_generators[class_idx]
+    #     feature_map_size = self._feature_map_sizes[class_idx]
+    #     return np.prod(feature_map_size) * ag.num_anchors_per_localization
+    #
+    # def anchors_range(self, class_name):
+    #     if isinstance(class_name, int):
+    #         class_name = self._classes[class_name]
+    #     assert class_name in self._classes
+    #     num_anchors = 0
+    #     anchor_ranges = []
+    #     for name in self._classes:
+    #         anchor_ranges.append((num_anchors, num_anchors + self.num_anchors(name)))
+    #         num_anchors += anchor_ranges[-1][1] - num_anchors
+    #     return anchor_ranges[self._classes.index(class_name)]
+    #
+    # def num_anchors_per_location_class(self, class_name):
+    #     if isinstance(class_name, int):
+    #         class_name = self._classes[class_name]
+    #     assert class_name in self._classes
+    #     class_idx = self._classes.index(class_name)
+    #     return self._anchor_generators[class_idx].num_anchors_per_localization
 

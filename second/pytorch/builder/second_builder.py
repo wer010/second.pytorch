@@ -130,5 +130,6 @@ def build(model_cfg: second_pb2.VoxelNet, voxel_generator,
         nms_class_agnostic=model_cfg.nms_class_agnostic,
         num_direction_bins=model_cfg.num_direction_bins,
         direction_limit_offset=model_cfg.direction_limit_offset,
+        use_quadrant = model_cfg.use_quadrant
     )
     return net

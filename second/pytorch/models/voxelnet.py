@@ -102,6 +102,7 @@ class VoxelNet(nn.Module):
                  nms_class_agnostic=False,
                  num_direction_bins=2,
                  direction_limit_offset=0,
+                 use_quadrant = False,
                  name='voxelnet'):
         super().__init__()
         self.name = name
@@ -137,6 +138,7 @@ class VoxelNet(nn.Module):
         self._nms_class_agnostic = nms_class_agnostic
         self._num_direction_bins = num_direction_bins
         self._dir_limit_offset = direction_limit_offset
+        self._use_quadrant = use_quadrant
         self.voxel_feature_extractor = voxel_encoder.get_vfe_class(vfe_class_name)(
             num_input_features,
             use_norm,
@@ -322,13 +324,11 @@ class VoxelNet(nn.Module):
             }
         """
         self.start_timer("voxel_feature_extractor")
-        voxel_features = self.voxel_feature_extractor(voxels, num_points,
-                                                      coors)
+        voxel_features = self.voxel_feature_extractor(voxels, num_points, coors)
         self.end_timer("voxel_feature_extractor")
 
         self.start_timer("middle forward")
-        spatial_features = self.middle_feature_extractor(
-            voxel_features, coors, batch_size)
+        spatial_features = self.middle_feature_extractor(voxel_features, coors, batch_size)
         self.end_timer("middle forward")
         self.start_timer("rpn forward")
         preds_dict = self.rpn(spatial_features)
@@ -363,6 +363,7 @@ class VoxelNet(nn.Module):
         box_preds = preds_dict["box_preds"].view(batch_size_dev, -1, self._box_coder.code_size)
         # err_msg = f"num_anchors={batch_anchors.shape[1]}, but num_output={box_preds.shape[1]}. please check size"
         # assert batch_anchors.shape[1] == box_preds.shape[1], err_msg
+
         if self.training:
             return self.loss(example, preds_dict)
         else:
@@ -372,6 +373,8 @@ class VoxelNet(nn.Module):
             self.end_timer("predict")
             return res
 
+
+    # decode the 4 quadrants targets into original format
     def predict(self, example, preds_dict):
         """start with v1.6.0, this function don't contain any kitti-specific code.
         Returns:
@@ -381,17 +384,24 @@ class VoxelNet(nn.Module):
                 scores: [N]
                 label_preds: [N]
                 metadata: meta-data which contains dataset-specific information.
-                    for kitti, it contains image idx (label idx), 
+                    for kitti, it contains image idx (label idx),
                     for nuscenes, sample_token is saved in it.
             }
         """
-        batch_size = example['anchors'].shape[0]
+        batch_size = len(example["metadata"])
         if "metadata" not in example or len(example["metadata"]) == 0:
             meta_list = [None] * batch_size
         else:
             meta_list = example["metadata"]
-        batch_anchors = example["anchors"].view(batch_size, -1,
-                                                example["anchors"].shape[-1])
+        if self._use_quadrant:
+            batch_size*=4
+            meta_list*=4
+            nms_pre_max_sizes = [i // 4 for i in self._nms_pre_max_sizes]
+            nms_post_max_sizes = [i // 4 for i in self._nms_post_max_sizes]
+        else:
+            nms_pre_max_sizes = self._nms_pre_max_sizes
+            nms_post_max_sizes = self._nms_post_max_sizes
+        batch_anchors = example["anchors"].expand(batch_size, -1, example["anchors"].shape[-1])
         if "anchors_mask" not in example:
             batch_anchors_mask = [None] * batch_size
         else:
@@ -400,20 +410,17 @@ class VoxelNet(nn.Module):
         t = time.time()
         batch_box_preds = preds_dict["box_preds"]
         batch_cls_preds = preds_dict["cls_preds"]
-        batch_box_preds = batch_box_preds.view(batch_size, -1,
-                                               self._box_coder.code_size)
+        batch_box_preds = batch_box_preds.view(batch_size, -1,  self._box_coder.code_size)
         num_class_with_bg = self._num_class
         if not self._encode_background_as_zeros:
             num_class_with_bg = self._num_class + 1
 
-        batch_cls_preds = batch_cls_preds.view(batch_size, -1,
-                                               num_class_with_bg)
-        batch_box_preds = self._box_coder.decode_torch(batch_box_preds,
-                                                       batch_anchors)
+        batch_cls_preds = batch_cls_preds.view(batch_size, -1, num_class_with_bg)
+        batch_box_preds = self._box_coder.decode_torch(batch_box_preds, batch_anchors)
+
         if self._use_direction_classifier:
             batch_dir_preds = preds_dict["dir_cls_preds"]
-            batch_dir_preds = batch_dir_preds.view(batch_size, -1,
-                                                   self._num_direction_bins)
+            batch_dir_preds = batch_dir_preds.view(batch_size, -1, self._num_direction_bins)
         else:
             batch_dir_preds = [None] * batch_size
 
@@ -451,8 +458,7 @@ class VoxelNet(nn.Module):
                 nms_func = box_torch_ops.rotate_nms
             else:
                 nms_func = box_torch_ops.nms
-            feature_map_size_prod = batch_box_preds.shape[
-                1] // self.target_assigner.num_anchors_per_location
+            feature_map_size_prod = batch_box_preds.shape[1] // self.target_assigner.num_anchors_per_location
             if self._multiclass_nms:
                 assert self._encode_background_as_zeros is True
                 boxes_for_nms = box_preds[:, [0, 1, 3, 4, 6]]
@@ -460,8 +466,7 @@ class VoxelNet(nn.Module):
                     box_preds_corners = box_torch_ops.center_to_corner_box2d(
                         boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
                         boxes_for_nms[:, 4])
-                    boxes_for_nms = box_torch_ops.corner_to_standup_nd(
-                        box_preds_corners)
+                    boxes_for_nms = box_torch_ops.corner_to_standup_nd(box_preds_corners)
 
                 selected_boxes, selected_labels, selected_scores = [], [], []
                 selected_dir_labels = []
@@ -478,32 +483,22 @@ class VoxelNet(nn.Module):
                         score_threshs,
                         pre_max_sizes, post_max_sizes, iou_thresholds):
                     if self._nms_class_agnostic:
-                        class_scores = total_scores.view(
-                            feature_map_size_prod, -1,
-                            self._num_class)[..., class_idx]
+                        class_scores = total_scores.view(feature_map_size_prod, -1, self._num_class)[..., class_idx]
                         class_scores = class_scores.contiguous().view(-1)
-                        class_boxes_nms = boxes.view(-1,
-                                                     boxes_for_nms.shape[-1])
+                        class_boxes_nms = boxes.view(-1, boxes_for_nms.shape[-1])
                         class_boxes = box_preds
                         class_dir_labels = dir_labels
                     else:
                         anchors_range = self.target_assigner.anchors_range(class_idx)
-                        class_scores = total_scores.view(
-                            -1,
-                            self._num_class)[anchors_range[0]:anchors_range[1], class_idx]
-                        class_boxes_nms = boxes.view(-1,
-                            boxes_for_nms.shape[-1])[anchors_range[0]:anchors_range[1], :]
+                        class_scores = total_scores.view(-1,self._num_class)[anchors_range[0]:anchors_range[1], class_idx]
+                        class_boxes_nms = boxes.view(-1,boxes_for_nms.shape[-1])[anchors_range[0]:anchors_range[1], :]
                         class_scores = class_scores.contiguous().view(-1)
-                        class_boxes_nms = class_boxes_nms.contiguous().view(
-                            -1, boxes_for_nms.shape[-1])
-                        class_boxes = box_preds.view(-1,
-                            box_preds.shape[-1])[anchors_range[0]:anchors_range[1], :]
-                        class_boxes = class_boxes.contiguous().view(
-                            -1, box_preds.shape[-1])
+                        class_boxes_nms = class_boxes_nms.contiguous().view(-1, boxes_for_nms.shape[-1])
+                        class_boxes = box_preds.view(-1, box_preds.shape[-1])[anchors_range[0]:anchors_range[1], :]
+                        class_boxes = class_boxes.contiguous().view(-1, box_preds.shape[-1])
                         if self._use_direction_classifier:
                             class_dir_labels = dir_labels.view(-1)[anchors_range[0]:anchors_range[1]]
-                            class_dir_labels = class_dir_labels.contiguous(
-                            ).view(-1)
+                            class_dir_labels = class_dir_labels.contiguous().view(-1)
                     if score_thresh > 0.0:
                         class_scores_keep = class_scores >= score_thresh
                         if class_scores_keep.shape[0] == 0:
@@ -512,13 +507,10 @@ class VoxelNet(nn.Module):
                         class_scores = class_scores[class_scores_keep]
                     if class_scores.shape[0] != 0:
                         if score_thresh > 0.0:
-                            class_boxes_nms = class_boxes_nms[
-                                class_scores_keep]
+                            class_boxes_nms = class_boxes_nms[class_scores_keep]
                             class_boxes = class_boxes[class_scores_keep]
-                            class_dir_labels = class_dir_labels[
-                                class_scores_keep]
-                        keep = nms_func(class_boxes_nms, class_scores, pre_ms,
-                                        post_ms, iou_th)
+                            class_dir_labels = class_dir_labels[class_scores_keep]
+                        keep = nms_func(class_boxes_nms, class_scores, pre_ms, post_ms, iou_th)
                         if keep.shape[0] != 0:
                             selected_per_class.append(keep)
                         else:
@@ -535,8 +527,7 @@ class VoxelNet(nn.Module):
                                        dtype=torch.int64,
                                        device=box_preds.device))
                         if self._use_direction_classifier:
-                            selected_dir_labels.append(
-                                class_dir_labels[selected])
+                            selected_dir_labels.append(class_dir_labels[selected])
                         selected_scores.append(class_scores[selected])
                 selected_boxes = torch.cat(selected_boxes, dim=0)
                 selected_labels = torch.cat(selected_labels, dim=0)
@@ -576,8 +567,8 @@ class VoxelNet(nn.Module):
                     selected = nms_func(
                         boxes_for_nms,
                         top_scores,
-                        pre_max_size=self._nms_pre_max_sizes[0],
-                        post_max_size=self._nms_post_max_sizes[0],
+                        pre_max_size=nms_pre_max_sizes[0],
+                        post_max_size=nms_post_max_sizes[0],
                         iou_threshold=self._nms_iou_thresholds[0],
                     )
                 else:
@@ -599,22 +590,18 @@ class VoxelNet(nn.Module):
                     dir_rot = box_torch_ops.limit_period(
                         box_preds[..., 6] - self._dir_offset,
                         self._dir_limit_offset, period)
-                    box_preds[
-                        ...,
-                        6] = dir_rot + self._dir_offset + period * dir_labels.to(
-                            box_preds.dtype)
+                    box_preds[..., 6] = dir_rot + self._dir_offset + period * dir_labels.to(box_preds.dtype)
                 final_box_preds = box_preds
                 final_scores = scores
                 final_labels = label_preds
+
                 if post_center_range is not None:
-                    mask = (final_box_preds[:, :3] >=
-                            post_center_range[:3]).all(1)
-                    mask &= (final_box_preds[:, :3] <=
-                             post_center_range[3:]).all(1)
+                    mask = (final_box_preds[:, :3] >=post_center_range[:3]).all(1)
+                    mask &= (final_box_preds[:, :3] <=post_center_range[3:]).all(1)
                     predictions_dict = {
                         "box3d_lidar": final_box_preds[mask],
                         "scores": final_scores[mask],
-                        "label_preds": label_preds[mask],
+                        "label_preds": final_labels[mask],
                         "metadata": meta,
                     }
                 else:
@@ -640,7 +627,45 @@ class VoxelNet(nn.Module):
                     meta,
                 }
             predictions_dicts.append(predictions_dict)
-        return predictions_dicts
+        # only support eval batch_size =1
+        if self._use_quadrant:
+            ret = {}
+            pred_box_1st_quadrant = predictions_dicts[0]['box3d_lidar']
+            pred_box_2nd_quadrant = predictions_dicts[1]['box3d_lidar']
+            pred_box_3rd_quadrant = predictions_dicts[2]['box3d_lidar']
+            pred_box_4th_quadrant = predictions_dicts[3]['box3d_lidar']
+
+            pred_box_2nd_quadrant[:, 0] = -pred_box_2nd_quadrant[:, 0]
+            pred_box_2nd_quadrant[:, 6] = -pred_box_2nd_quadrant[:, 6]
+
+            pred_box_3rd_quadrant[:, 0:2] = -pred_box_3rd_quadrant[:, 0:2]
+            pred_box_3rd_quadrant[:, 6] = pred_box_3rd_quadrant[:, 6] - np.pi
+
+            pred_box_4th_quadrant[:, 1] = -pred_box_4th_quadrant[:, 1]
+            pred_box_4th_quadrant[:, 6] = -pred_box_4th_quadrant[:, 6] + np.pi
+
+            predictions_dicts[0]['box3d_lidar'] = pred_box_1st_quadrant
+            predictions_dicts[1]['box3d_lidar'] = pred_box_2nd_quadrant
+            predictions_dicts[2]['box3d_lidar'] = pred_box_3rd_quadrant
+            predictions_dicts[3]['box3d_lidar'] = pred_box_4th_quadrant
+            ret['box3d_lidar'] = torch.cat([predictions_dicts[0]['box3d_lidar'],
+                                            predictions_dicts[1]['box3d_lidar'],
+                                            predictions_dicts[2]['box3d_lidar'],
+                                            predictions_dicts[3]['box3d_lidar']])
+            ret['scores'] = torch.cat([predictions_dicts[0]['scores'],
+                                    predictions_dicts[1]['scores'],
+                                    predictions_dicts[2]['scores'],
+                                    predictions_dicts[3]['scores']])
+            ret['label_preds'] = torch.cat([predictions_dicts[0]['label_preds'],
+                                       predictions_dicts[1]['label_preds'],
+                                       predictions_dicts[2]['label_preds'],
+                                       predictions_dicts[3]['label_preds']])
+            ret['metadata'] = predictions_dicts[0]['metadata']
+            return [ret]
+        else:
+            return predictions_dicts
+
+
 
     def metrics_to_float(self):
         self.rpn_acc.float()

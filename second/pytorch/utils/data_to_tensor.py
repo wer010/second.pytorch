@@ -77,58 +77,7 @@ def collate_kitti(batch_list, device=None):
     return ret
 
 
-def cut_quadrant(input, voxel_shape):
-    # convert voxel data of the 2nd, 3rd, 4th quadrant into 1st quadrant
-    # input: dict, contain voxels and coordinates, which represent the voxel data (n,60,4),at most 60 points per voxel and (x,y,z,I)
-    # and the corresponding coordinates, shape(n,4),(batch, z, y, x)
-    # voxel_shape: (h,w,d) denote the number of voxel grid in x,y,z direction
-    # return: dict, contain voxels and coordinates, all points in the voxels map into 1st quadrant,
-    # coordinates,shape(n,5), (batch , quadrant index, z, y, x), and the y, x are recalculate from center point
-    voxels = input["voxels"]
-    coors = input["coordinates"]
 
-    y = coors[:, 2]
-    x = coors[:, 3]
-    quadrant_range = voxel_shape//2
-    # print(f'max is {np.max(coors[:,2:4])}, min is {np.min(coors[:,2:4])}')
-
-    quadrant_1st_mask = np.multiply(x>=quadrant_range[0] , y>=quadrant_range[1])
-    quadrant_2nd_mask = np.multiply(x < quadrant_range[0] , y >= quadrant_range[1])
-    quadrant_3rd_mask = np.multiply(x<quadrant_range[0] , y<quadrant_range[1])
-    quadrant_4th_mask = np.multiply(x >= quadrant_range[0] , y < quadrant_range[1])
-
-
-    coors[quadrant_1st_mask,2:4]= coors[quadrant_1st_mask,2:4] - quadrant_range[0:2]
-
-    voxels[quadrant_2nd_mask, :, 0] *= -1
-    coors[quadrant_2nd_mask,2]= coors[quadrant_2nd_mask,2] - quadrant_range[1]
-
-    voxels[quadrant_3rd_mask, :, 0:2] *= -1
-
-    voxels[quadrant_4th_mask,:,1] *=  -1
-    coors[quadrant_4th_mask,3]= coors[quadrant_4th_mask,3] - quadrant_range[0]
-
-    # test_v = input["voxels"]
-    # test_v[:,:,0:2] = np.absolute(test_v[:,:,0:2])
-    # assert np.allclose(voxels, test_v)
-    # print(f'max is {np.max(voxels)}, min is {np.min(voxels)}')
-
-    quadrant_index = quadrant_2nd_mask.astype(np.int) * 1 \
-                     + quadrant_3rd_mask.astype(np.int) * 2 \
-                     + quadrant_4th_mask.astype(np.int) * 3
-
-    coors = np.insert(coors, 1, quadrant_index, 1)
-
-    n = np.sum(quadrant_1st_mask)+\
-           np.sum(quadrant_2nd_mask)+\
-           np.sum(quadrant_3rd_mask)+\
-           np.sum(quadrant_4th_mask)
-    assert voxels.shape[0]== n, f'{voxels.shape[0]} is not equal to {n}'
-
-    # print(f'max is {np.max(coors[:, 2:4])}, min is {np.min(coors[:, 2:4])}')
-    input["voxels"] = voxels
-    input["coordinates"] = coors
-    return input
 
 def example_convert_to_torch(example, dtype=torch.float32,
                              device=None) -> dict:

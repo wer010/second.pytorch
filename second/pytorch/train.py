@@ -278,8 +278,6 @@ def train(config_path,
                 lr_scheduler.step(net.get_global_step())
                 time_metrics = example["metrics"]
                 example.pop("metrics")
-                if model_cfg.use_quadrant:
-                    example = data_to_tensor.cut_quadrant(example, target_assigner.voxel_shape)
 
                 example_torch = data_to_tensor.example_convert_to_torch(example, float_dtype)
 
@@ -382,8 +380,7 @@ def train(config_path,
                     model_logging.log_text(
                         f'generate label finished({sec_per_ex:.2f}/s). start eval:',
                         global_step)
-                    result_dict = eval_dataset.dataset.evaluation(
-                        detections, str(result_path_step))
+                    result_dict = eval_dataset.dataset.evaluation(detections, str(result_path_step))
                     for k, v in result_dict["results"].items():
                         model_logging.log_text("Evaluation {}".format(k), global_step)
                         model_logging.log_text(v, global_step)
